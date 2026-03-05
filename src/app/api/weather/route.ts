@@ -258,6 +258,7 @@ export async function GET(request: NextRequest) {
         temperatureMin: Math.round(
           forecastData.daily?.temperature_2m_min?.[index] ?? 0,
         ),
+        precipitation: forecastData.daily?.precipitation_sum?.[index] ?? 0,
       }));
     const airQualityData = airQualityResponse.ok
       ? ((await airQualityResponse.json()) as AirQualityApiResponse)

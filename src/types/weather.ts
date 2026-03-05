@@ -5,6 +5,7 @@ export interface DailyOutlook {
   weatherCode: number;
   temperatureMax: number;
   temperatureMin: number;
+  precipitation: number;
 }
 
 export interface WeatherData {

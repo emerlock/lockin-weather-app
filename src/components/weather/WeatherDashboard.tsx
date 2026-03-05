@@ -110,22 +110,20 @@ function buildWindyRadarUrl(latitude: number, longitude: number) {
   const params = new URLSearchParams({
     lat,
     lon,
-    detailLat: lat,
-    detailLon: lon,
     width: "650",
-    height: "450",
+    height: "420",
     zoom: "7",
     level: "surface",
     overlay: "radar",
     product: "radar",
-    menu: "true",
-    message: "true",
-    marker: "true",
-    calendar: "24",
-    pressure: "true",
+    menu: "false",
+    message: "false",
+    marker: "false",
+    calendar: "now",
+    pressure: "false",
     type: "map",
     location: "coordinates",
-    detail: "true",
+    detail: "false",
     metricWind: "default",
     metricTemp: "default",
     radarRange: "-1",
@@ -142,6 +140,21 @@ function formatOutlookDate(date: string) {
     month: "short",
     day: "numeric",
   });
+}
+
+function formatOutlookPrecipUnit(unit: string) {
+  return unit === "inch" ? '"' : unit;
+}
+
+function formatOutlookPrecipValue(value: number) {
+  return (Math.ceil(value * 100) / 100).toFixed(2);
+}
+
+function directionFromDegrees(degrees: number) {
+  const normalized = ((degrees % 360) + 360) % 360;
+  const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  const index = Math.round(normalized / 45) % 8;
+  return directions[index];
 }
 
 export function WeatherDashboard() {
@@ -317,17 +330,31 @@ export function WeatherDashboard() {
             </p>
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                Dark Mode
-              </span>
-              <Switch
-                checked={isDarkMode}
-                onChange={handleThemeToggle}
-                className="group inline-flex h-6 w-11 items-center rounded-full bg-slate-300 transition data-[checked]:bg-[var(--secondary)]"
-              >
-                <span className="size-4 translate-x-1 rounded-full bg-[var(--tertiary)] transition group-data-[checked]:translate-x-6" />
-              </Switch>
+            <div className="flex items-center gap-5">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                  Dark Mode
+                </span>
+                <Switch
+                  checked={isDarkMode}
+                  onChange={handleThemeToggle}
+                  className="group inline-flex h-6 w-11 items-center rounded-full bg-slate-300 transition data-[checked]:bg-[var(--secondary)]"
+                >
+                  <span className="size-4 translate-x-1 rounded-full bg-[var(--tertiary)] transition group-data-[checked]:translate-x-6" />
+                </Switch>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                  Use Celsius
+                </span>
+                <Switch
+                  checked={unit === "celsius"}
+                  onChange={toggleUnit}
+                  className="group inline-flex h-6 w-11 items-center rounded-full bg-slate-300 transition data-[checked]:bg-[var(--primary)]"
+                >
+                  <span className="size-4 translate-x-1 rounded-full bg-[var(--tertiary)] transition group-data-[checked]:translate-x-6" />
+                </Switch>
+              </div>
             </div>
           </div>
         </div>
@@ -428,23 +455,6 @@ export function WeatherDashboard() {
           </div>
         </form>
 
-        <div className="mt-5 flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3">
-          <div>
-            <p className="text-sm font-medium text-[var(--foreground)]">
-              Use Celsius
-            </p>
-            <p className="text-sm text-[var(--text-muted)]">
-              Current unit: {unit === "celsius" ? "Celsius" : "Fahrenheit"}
-            </p>
-          </div>
-          <Switch
-            checked={unit === "celsius"}
-            onChange={toggleUnit}
-            className="group inline-flex h-6 w-11 items-center rounded-full bg-slate-300 transition data-[checked]:bg-[var(--primary)]"
-          >
-            <span className="size-4 translate-x-1 rounded-full bg-[var(--tertiary)] transition group-data-[checked]:translate-x-6" />
-          </Switch>
-        </div>
       </section>
 
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[0_16px_50px_rgba(37,99,235,0.1)]">
@@ -526,7 +536,8 @@ export function WeatherDashboard() {
                           Wind Direction
                         </p>
                         <p className="text-xl font-semibold text-[var(--foreground)]">
-                          {weather.windDirection} {weather.windDirectionUnit}
+                          {weather.windDirection} {weather.windDirectionUnit} (
+                          {directionFromDegrees(weather.windDirection)})
                         </p>
                       </div>
                       <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
@@ -578,7 +589,7 @@ export function WeatherDashboard() {
             {weather.dailyOutlook.map((day) => (
               <div
                 key={day.date}
-                className="rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3"
+                className="relative rounded-lg border border-[var(--border)] bg-[var(--surface-muted)] p-3"
               >
                 <p className="text-xs font-semibold text-[var(--text-muted)]">
                   {formatOutlookDate(day.date)}
@@ -594,6 +605,12 @@ export function WeatherDashboard() {
                 <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
                   {day.temperatureMax}° / {day.temperatureMin}°
                 </p>
+                {day.precipitation > 0 ? (
+                  <p className="absolute bottom-2 right-2 text-[11px] font-medium text-[var(--text-muted)]">
+                    {formatOutlookPrecipValue(day.precipitation)}{" "}
+                    {formatOutlookPrecipUnit(weather.dailyPrecipitationUnit)}
+                  </p>
+                ) : null}
               </div>
             ))}
           </div>
