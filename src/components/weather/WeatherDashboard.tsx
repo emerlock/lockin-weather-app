@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Combobox,
   ComboboxInput,
@@ -147,7 +147,71 @@ function formatOutlookPrecipUnit(unit: string) {
 }
 
 function formatOutlookPrecipValue(value: number) {
-  return (Math.ceil(value * 100) / 100).toFixed(2);
+  return (Math.round(value * 100) / 100).toFixed(2);
+}
+
+function normalizeAlertLabel(value?: string) {
+  const trimmedValue = value?.trim();
+  return trimmedValue || "Weather Alert";
+}
+
+function normalizeAlertSeverity(value?: string) {
+  const lowered = value?.toLowerCase().trim();
+  if (!lowered) return "Unknown";
+  if (lowered.includes("extreme")) return "Extreme";
+  if (lowered.includes("severe")) return "Severe";
+  if (lowered.includes("moderate")) return "Moderate";
+  if (lowered.includes("minor")) return "Minor";
+  if (lowered.includes("unknown")) return "Unknown";
+  return value ?? "Unknown";
+}
+
+function alertBadgeStyle(severity?: string) {
+  const normalized = normalizeAlertSeverity(severity).toLowerCase();
+  switch (normalized) {
+    case "extreme":
+      return "border-red-500/60 bg-red-500/15 text-red-300";
+    case "severe":
+      return "border-orange-500/60 bg-orange-500/15 text-orange-300";
+    case "moderate":
+      return "border-yellow-500/60 bg-yellow-500/15 text-yellow-300";
+    case "minor":
+      return "border-blue-500/60 bg-blue-500/15 text-blue-300";
+    default:
+      return "border-slate-500/60 bg-slate-500/15 text-slate-300";
+  }
+}
+
+function formatAlertTimestamp(value?: string) {
+  if (!value) return "Unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function normalizeAlertBody(value?: string) {
+  if (!value) return "";
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function buildAlertPreview(description?: string, instruction?: string) {
+  const source = normalizeAlertBody(description) || normalizeAlertBody(instruction);
+  if (!source) return "No summary text provided.";
+  const firstParagraph = source
+    .split(/\n\s*\n/)[0]
+    .replace(/\s+/g, " ")
+    .trim();
+  if (firstParagraph.length <= 220) return firstParagraph;
+  return `${firstParagraph.slice(0, 217)}...`;
 }
 
 function directionFromDegrees(degrees: number) {
@@ -170,9 +234,10 @@ export function WeatherDashboard() {
   const [favoriteLocation, setFavoriteLocation] =
     useState<LocationSuggestion | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(true);
+  const weatherRequestIdRef = useRef(0);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
@@ -251,6 +316,7 @@ export function WeatherDashboard() {
     const controller = new AbortController();
 
     async function loadWeather() {
+      const requestId = ++weatherRequestIdRef.current;
       setLoading(true);
       setError(null);
 
@@ -271,7 +337,9 @@ export function WeatherDashboard() {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
-        setLoading(false);
+        if (requestId === weatherRequestIdRef.current) {
+          setLoading(false);
+        }
       }
     }
 
@@ -457,9 +525,97 @@ export function WeatherDashboard() {
 
       </section>
 
+      {!loading && !error && weather && weather.activeAlerts.length > 0 ? (
+        <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[0_16px_50px_rgba(37,99,235,0.1)]">
+          <section className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-muted)]">
+            <Disclosure>
+              <div className="px-4 py-3">
+                <Disclosure.Button className="flex w-full items-center justify-between">
+                  <span className="text-sm font-semibold text-[var(--foreground)]">
+                    Active Alerts
+                  </span>
+                  <span className="text-sm text-[var(--text-muted)]">
+                    {weather.activeAlerts.length} active
+                  </span>
+                </Disclosure.Button>
+              </div>
+              <Disclosure.Panel className="border-t border-[var(--border)]">
+                <div className="space-y-3 px-4 py-4">
+                  {weather.activeAlerts.map((alert) => {
+                      const description = normalizeAlertBody(alert.description);
+                      const instruction = normalizeAlertBody(alert.instruction);
+                      const hasFullText = Boolean(description || instruction);
+                      const metadata = [
+                        `Certainty: ${alert.certainty || "Unknown"}`,
+                        alert.effective ? `Effective ${formatAlertTimestamp(alert.effective)}` : "",
+                        alert.onset ? `Starts ${formatAlertTimestamp(alert.onset)}` : "",
+                        alert.expires ? `Expires ${formatAlertTimestamp(alert.expires)}` : "",
+                        alert.areaDesc ? `Area: ${alert.areaDesc}` : "Area: Unknown",
+                      ]
+                        .filter(Boolean)
+                        .join(" | ");
+
+                      return (
+                        <article
+                          key={alert.id}
+                          className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3"
+                        >
+                          <div className="mb-1 flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-[var(--foreground)]">
+                              {normalizeAlertLabel(alert.headline || alert.event)}
+                            </p>
+                            <span
+                              className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${alertBadgeStyle(
+                                alert.severity
+                              )}`}
+                            >
+                              {normalizeAlertSeverity(alert.severity)}
+                            </span>
+                          </div>
+                          <p className="text-sm text-[var(--text-muted)]">{metadata}</p>
+                          <p className="mt-2 text-sm leading-relaxed text-[var(--foreground)]">
+                            {buildAlertPreview(description, instruction)}
+                          </p>
+                          {hasFullText ? (
+                            <Disclosure as="div" className="mt-2">
+                              {({ open }) => (
+                                <>
+                                  <Disclosure.Button className="text-xs font-semibold text-[var(--primary)] underline underline-offset-2">
+                                    {open ? "Hide full alert text" : "Show full alert text"}
+                                  </Disclosure.Button>
+                                  <Disclosure.Panel className="mt-2 space-y-2 text-sm leading-relaxed text-[var(--foreground)]">
+                                    {description ? (
+                                      <p className="whitespace-pre-line">{description}</p>
+                                    ) : null}
+                                    {instruction ? (
+                                      <p className="whitespace-pre-line">
+                                        Instructions: {instruction}
+                                      </p>
+                                    ) : null}
+                                  </Disclosure.Panel>
+                                </>
+                              )}
+                            </Disclosure>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                </div>
+              </Disclosure.Panel>
+            </Disclosure>
+          </section>
+        </section>
+      ) : null}
+
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-[0_16px_50px_rgba(37,99,235,0.1)]">
         {loading ? (
-          <p className="text-[var(--text-muted)]">Loading weather...</p>
+          <div className="flex items-center gap-3 text-[var(--text-muted)]">
+            <span
+              className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--border)] border-t-[var(--primary)] border-r-[var(--secondary)]"
+              aria-hidden="true"
+            />
+            <p>Loading weather...</p>
+          </div>
         ) : null}
         {error ? <p className="text-sm text-red-500">{error}</p> : null}
 
@@ -468,19 +624,18 @@ export function WeatherDashboard() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
                 <p className="text-xs uppercase tracking-wide text-[var(--text-muted)]">
-                  City
-                </p>
-                <p className="text-xl font-semibold text-[var(--foreground)]">
-                  {weather.city}
-                  {weather.state ? `, ${weather.state}` : ""}
-                </p>
-              </div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                <p className="text-xs uppercase tracking-wide text-[var(--text-muted)]">
                   Temperature
                 </p>
                 <p className={`text-xl font-semibold ${temperatureColor}`}>
                   {weather.temperature} {unitLabel}
+                </p>
+              </div>
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+                <p className="text-xs uppercase tracking-wide text-[var(--text-muted)]">
+                  Forecast High / Low
+                </p>
+                <p className="text-xl font-semibold text-[var(--foreground)]">
+                  {weather.forecastTodayMax}° / {weather.forecastTodayMin}°
                 </p>
               </div>
               <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
@@ -567,7 +722,7 @@ export function WeatherDashboard() {
                             Estimated Precipitation (Today)
                           </p>
                           <p className="text-xl font-semibold text-[var(--foreground)]">
-                            {weather.dailyPrecipitation} {weather.dailyPrecipitationUnit}
+                            {formatOutlookPrecipValue(weather.dailyPrecipitation)} {weather.dailyPrecipitationUnit}
                           </p>
                         </div>
                       ) : null}
@@ -605,6 +760,11 @@ export function WeatherDashboard() {
                 <p className="mt-2 text-sm font-semibold text-[var(--foreground)]">
                   {day.temperatureMax}° / {day.temperatureMin}°
                 </p>
+                {day.precipitationChance !== undefined && day.precipitationChance !== null ? (
+                  <p className="mt-1 text-xs font-medium text-[var(--text-muted)]">
+                    Precip: {day.precipitationChance}%
+                  </p>
+                ) : null}
                 {day.precipitation > 0 ? (
                   <p className="absolute bottom-2 right-2 text-[11px] font-medium text-[var(--text-muted)]">
                     {formatOutlookPrecipValue(day.precipitation)}{" "}
@@ -637,6 +797,10 @@ export function WeatherDashboard() {
           </div>
         </section>
       ) : null}
+
+      <footer className="pb-2 text-center text-xs text-[var(--text-muted)]">
+        Weather data provided by the National Weather Service (NWS).
+      </footer>
     </main>
   );
 }

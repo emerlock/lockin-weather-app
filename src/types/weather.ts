@@ -6,6 +6,22 @@ export interface DailyOutlook {
   temperatureMax: number;
   temperatureMin: number;
   precipitation: number;
+  precipitationChance?: number;
+}
+
+export interface WeatherAlert {
+  id: string;
+  event: string;
+  headline: string;
+  areaDesc?: string;
+  description: string;
+  instruction: string;
+  severity: string;
+  certainty: string;
+  effective: string;
+  onset: string;
+  ends: string;
+  expires: string;
 }
 
 export interface WeatherData {
@@ -24,10 +40,13 @@ export interface WeatherData {
   airQualityUnit: string;
   dailyPrecipitation: number;
   dailyPrecipitationUnit: string;
+  forecastTodayMax: number;
+  forecastTodayMin: number;
   windSpeedUnit: string;
   windDirectionUnit: string;
   humidityUnit: string;
   surfacePressureUnit: string;
+  activeAlerts: WeatherAlert[];
   dailyOutlook: DailyOutlook[];
   unit: TemperatureUnit;
   fetchedAt: string;
