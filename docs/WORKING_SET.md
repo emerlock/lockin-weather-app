@@ -2,46 +2,62 @@
 
 ## Project Snapshot
 - Stack: Next.js App Router (TypeScript), Tailwind CSS v4, Zustand, Headless UI.
-- Primary app goal: city/state weather search with modern dark-first UI, local favorites, radar embed, PWA support.
-- Current default theme: dark mode.
+- Primary app goal: city/state weather search using National Weather Service (NWS) data, local favorites, radar embed, and PWA support.
 
 ## Current Features
 - Location search:
   - Single `City, State` input.
-  - Keystroke autocomplete powered by Open-Meteo geocoding.
+  - Fuzzy autocomplete with stronger matching.
+  - Geocoding path adapted to an NWS-compatible public geocoder source.
 - Weather data:
-  - Current metrics: city, temperature, current weather (WMO text + icon), humidity.
-  - Additional metrics in accordion (default closed): wind speed, wind direction (degrees + compass), surface pressure, air quality (US AQI), daily precipitation.
-  - 5-day outlook with:
-    - daily icon + weather text
-    - high/low temperatures (integers)
-    - precipitation shown in tile bottom-right only when > 0
-    - precipitation rounded up to nearest hundredth
-    - inch unit displayed as `"` in outlook tiles
+  - Current metrics emphasize forecast area values and include:
+    - current temperature
+    - forecasted high/low
+    - current weather
+    - humidity, wind, pressure
+  - Current temperature uses recent NWS station observations when available, with forecast fallback behavior.
+  - Today high/low logic aligned to today's NWS forecast day.
+  - Daily precipitation amount shown as measurement units and rounded to hundredths.
+  - If estimated precipitation is `0.00`, precipitation amount can be hidden.
+  - 5-day outlook starts with tomorrow.
+  - 5-day outlook includes precipitation amount and precipitation percent chance labeling (`Precip:`).
+- 5-day outlook with:
+  - daily icon + weather text
+  - high/low temperatures
+  - precipitation amount and chance (with clearer precipitation labeling)
 - Favorites:
   - Star button saves current location as default favorite (localStorage).
   - Favorite auto-loads on app start.
   - Favorite location text is clickable to reload.
   - Red `X` clears favorite.
+- Active alerts:
+  - Separate alerts section above current weather section.
+  - Alerts section hidden when there are no active alerts.
+  - Collapsible alert content/readability improvements.
+  - Visual severity badges.
+  - Alert retrieval includes active CAP alerts plus HWO augmentation logic.
 - Windy radar:
   - Embedded radar-focused Windy iframe for selected coordinates.
-- Theme:
-  - Blue primary, purple secondary, white tertiary token system.
-  - Dark mode default with persisted toggle.
 - PWA:
   - Manifest route + icons.
   - Service worker registration.
   - Offline fallback route/page.
+- UI/UX:
+  - Loading spinner behavior improved for weather request loading states.
+  - Footer note restored: weather data provided by NWS.
 
 ## API Endpoints
 - `GET /api/weather?city=<city>&state=<state>&unit=<celsius|fahrenheit>`
-  - Uses Open-Meteo:
-    - Geocoding API (US-filtered, state match logic)
-    - Forecast API (current + daily data)
-    - Air Quality API (US AQI)
-  - Returns normalized weather payload used by UI.
+  - Uses NWS-backed flow:
+    - Geocoder resolution for city/state search
+    - NWS points API
+    - NWS forecast + hourly + grid data
+    - NWS observation stations/latest observations for current temperature fallback
+    - NWS active alerts + HWO handling
+  - Includes response caching.
+  - Returns normalized weather payload used by UI, including active alerts and precipitation details.
 - `GET /api/locations?q=<query>`
-  - Returns US `City, State` autocomplete suggestions.
+  - Returns US `City, State` autocomplete suggestions with stronger fuzzy matching.
 
 ## Important Files
 - App shell/layout:
@@ -56,6 +72,16 @@
 - API routes:
   - `src/app/api/weather/route.ts`
   - `src/app/api/locations/route.ts`
+- Weather API modules (route split):
+  - `src/app/api/weather/lib/cache.ts`
+  - `src/app/api/weather/lib/alerts.ts`
+  - `src/app/api/weather/lib/geocode.ts`
+  - `src/app/api/weather/lib/forecast.ts`
+  - `src/app/api/weather/lib/nws-client.ts`
+  - `src/app/api/weather/lib/observations.ts`
+  - `src/app/api/weather/lib/response-builder.ts`
+- Constants/properties:
+  - `src/constants/weather.ts`
 - PWA:
   - `src/app/manifest.ts`
   - `public/sw.js`
@@ -63,16 +89,23 @@
   - `src/app/offline/page.tsx`
   - `public/icons/*`
   - `public/favicon.svg`
+- Unit tests:
+  - `src/app/api/weather/lib/forecast.test.ts`
+  - `src/app/api/weather/lib/response-builder.test.ts`
+  - `vitest.config.ts`
 
 ## Local Run / Verify
 - Dev: `npm run dev`
 - Lint: `npm run lint`
 - Build: `npm run build`
 - Start production build: `npm run start`
+- Unit tests: `npm test`
+- Watch tests: `npm run test:watch`
 
 ## Deployment
 - Recommended target: Vercel (native Next.js support for App Router + API routes).
 
 ## Known Notes
 - Browser favicon/PWA icons can be heavily cached; hard refresh or reinstall PWA when testing icon updates.
-- Weather icons in component currently use emoji and render correctly, but ensure file encoding stays UTF-8 if edited externally.
+- NWS observations may be stale/unavailable for some stations; fallback to forecast logic is expected.
+- Alert discrepancies can occur if area/zone matching differs between local point resolution and headline coverage text.
